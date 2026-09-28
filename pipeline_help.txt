@@ -1,0 +1,20 @@
+usage: run_pipeline.py [-h] [--dataset-dir DATASET_DIR]
+                       [--output-dir OUTPUT_DIR]
+                       [--max-candidates MAX_CANDIDATES]
+                       [--threshold THRESHOLD]
+
+Generate blocking candidates and run the entity matching pipeline for Source
+1/2/3.
+
+options:
+  -h, --help            show this help message and exit
+  --dataset-dir DATASET_DIR
+                        Directory containing test_source1.tsv,
+                        test_source2.tsv, and test_source3.tsv.
+  --output-dir OUTPUT_DIR
+                        Directory where candidate_pairs.tsv and
+                        matching_results.tsv are written.
+  --max-candidates MAX_CANDIDATES
+                        Max candidate IDs retained per Source-1 entity.
+  --threshold THRESHOLD
+                        Similarity threshold used for final matching.

@@ -1,251 +1,79 @@
+import argparse
 import os
 import sys
-import pandas as pd
 
-# Add current src folder to Python path
+
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, CURRENT_DIR)
-
-from preprocessing import load_source
-from blocking import (
-    generate_candidate_pairs,
-    generate_candidate_pairs_for_matching
-)
-from matching import find_matches
+PROJECT_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "..", "..", ".."))
+DEFAULT_DATASET_DIR = os.path.join(PROJECT_DIR, "data")
+DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_DIR, "output")
 
 
-# ============================================================
-# PATHS
-# ============================================================
-
-# Your actual dataset location
-DATASET_DIR = (
-    r"C:\Users\Dnyaneshwari\Downloads"
-    r"\6ab10eb3b23ba_student_resource"
-    r"\student_resource"
-    r"\dataset"
-    r"\test"
-)
-
-# Your GitHub project output folder
-PROJECT_DIR = os.path.abspath(
-    os.path.join(CURRENT_DIR, "..", "..", "..")
-)
-
-OUTPUT_DIR = os.path.join(
-    PROJECT_DIR,
-    "output"
-)
-
-
-# ============================================================
-# CREATE OUTPUT FOLDER
-# ============================================================
-
-os.makedirs(
-    OUTPUT_DIR,
-    exist_ok=True
-)
-
-
-# ============================================================
-# DATASET FILE PATHS
-# ============================================================
-
-SOURCE1_PATH = os.path.join(
-    DATASET_DIR,
-    "test_source1.tsv"
-)
-
-SOURCE2_PATH = os.path.join(
-    DATASET_DIR,
-    "test_source2.tsv"
-)
-
-SOURCE3_PATH = os.path.join(
-    DATASET_DIR,
-    "test_source3.tsv"
-)
-
-
-# ============================================================
-# CHECK FILES
-# ============================================================
-
-print("\nChecking dataset files...")
-
-for path in [
-    SOURCE1_PATH,
-    SOURCE2_PATH,
-    SOURCE3_PATH
-]:
-
-    if not os.path.exists(path):
-
-        print(
-            f"\nERROR: File not found:\n{path}"
-        )
-
-        sys.exit(1)
-
-    print(
-        f"Found: {os.path.basename(path)}"
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Generate blocking candidates and run the entity matching pipeline for Source 1/2/3."
     )
+    parser.add_argument("--dataset-dir", default=DEFAULT_DATASET_DIR, help="Directory containing test_source1.tsv, test_source2.tsv, and test_source3.tsv.")
+    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, help="Directory where candidate_pairs.tsv and matching_results.tsv are written.")
+    parser.add_argument("--max-candidates", type=int, default=100, help="Max candidate IDs retained per Source-1 entity.")
+    parser.add_argument("--threshold", type=float, default=0.70, help="Similarity threshold used for final matching.")
+    return parser
 
 
-# ============================================================
-# LOAD DATA
-# ============================================================
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
 
-print("\nLoading test data...")
+    os.makedirs(args.output_dir, exist_ok=True)
 
-source1 = load_source(
-    SOURCE1_PATH
-)
+    source1_path = os.path.join(args.dataset_dir, "test_source1.tsv")
+    source2_path = os.path.join(args.dataset_dir, "test_source2.tsv")
+    source3_path = os.path.join(args.dataset_dir, "test_source3.tsv")
 
-source2 = load_source(
-    SOURCE2_PATH
-)
+    for path in [source1_path, source2_path, source3_path]:
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Missing required dataset file: {path}")
 
-source3 = load_source(
-    SOURCE3_PATH
-)
+    sys.path.insert(0, CURRENT_DIR)
 
-print(
-    f"Source 1 rows: {len(source1)}"
-)
+    from preprocessing import load_source
+    from blocking import generate_candidate_pairs, generate_candidate_pairs_for_matching
+    from matching import find_matches
 
-print(
-    f"Source 2 rows: {len(source2)}"
-)
+    source1 = load_source(source1_path)
+    source2 = load_source(source2_path)
+    source3 = load_source(source3_path)
 
-print(
-    f"Source 3 rows: {len(source3)}"
-)
+    print("\nLoading test data...")
+    print(f"Source 1 rows: {len(source1)}")
+    print(f"Source 2 rows: {len(source2)}")
+    print(f"Source 3 rows: {len(source3)}")
 
+    print("\nGenerating candidate pairs...")
+    candidate_path = os.path.join(args.output_dir, "candidate_pairs.tsv")
+    generate_candidate_pairs(source1, source2, source3, output_path=candidate_path, max_candidates=args.max_candidates)
+    candidate_pairs = generate_candidate_pairs_for_matching(source1, source2, source3, max_candidates=args.max_candidates)
 
-# ============================================================
-# BLOCKING
-# ============================================================
+    print(f"Candidate rows: {len(candidate_pairs)}")
+    print(f"\nCandidate file created:\n{candidate_path}")
 
-print("\nGenerating candidate pairs...")
+    print("\nRunning entity matching...")
+    matching_results = find_matches(source1, source2, source3, candidate_pairs, threshold=args.threshold)
 
-candidate_output = generate_candidate_pairs(
-    source1,
-    source2,
-    source3
-)
+    required_ids = [str(item) for item in source1["entity_id"].tolist()]
+    matching_results = matching_results.set_index("source1_entity_id").reindex(required_ids).fillna("").reset_index()
 
-candidate_pairs = generate_candidate_pairs_for_matching(
-    source1,
-    source2,
-    source3
-)
+    matching_path = os.path.join(args.output_dir, "matching_results.tsv")
+    matching_results.to_csv(matching_path, sep="\t", index=False, encoding="utf-8")
+    print(f"\nMatching results written to:\n{matching_path}")
 
-print(
-    f"Candidate rows: {len(candidate_pairs)}"
-)
-
-
-# ============================================================
-# SAVE CANDIDATE PAIRS
-# ============================================================
-
-candidate_path = os.path.join(
-    OUTPUT_DIR,
-    "candidate_pairs.tsv"
-)
-
-candidate_output.to_csv(
-    candidate_path,
-    sep="\t",
-    index=False,
-    encoding="utf-8"
-)
-
-print(
-    f"\nCandidate file created:\n{candidate_path}"
-)
+    non_empty = matching_results["matched_entity_ids"].astype(str).str.strip().ne("").sum()
+    print(f"\nMatching file created:\n{matching_path}")
+    print(f"\nTotal Source-1 entities: {len(matching_results)}")
+    print(f"Entities with at least one match: {non_empty}")
+    print(f"Entities with no match: {len(matching_results) - non_empty}")
+    print("\nPIPELINE COMPLETED.")
 
 
-# ============================================================
-# MATCHING
-# ============================================================
-
-print("\nRunning entity matching...")
-
-matching_results = find_matches(
-    source1,
-    source2,
-    source3,
-    candidate_pairs,
-    threshold=0.70
-)
-
-
-# ============================================================
-# MAKE SURE EVERY TEST S1 EXISTS
-# ============================================================
-
-required_ids = source1[
-    "entity_id"
-].tolist()
-
-matching_results = (
-    matching_results
-    .set_index("source1_entity_id")
-    .reindex(required_ids)
-    .fillna("")
-    .reset_index()
-)
-
-
-# ============================================================
-# SAVE FINAL MATCHING RESULTS
-# ============================================================
-
-matching_path = os.path.join(
-    OUTPUT_DIR,
-    "matching_results.tsv"
-)
-
-matching_results.to_csv(
-    matching_path,
-    sep="\t",
-    index=False,
-    encoding="utf-8"
-)
-
-
-# ============================================================
-# SUMMARY
-# ============================================================
-
-non_empty = (
-    matching_results["matched_entity_ids"]
-    .astype(str)
-    .str.strip()
-    .ne("")
-    .sum()
-)
-
-print(
-    f"\nMatching file created:\n{matching_path}"
-)
-
-print(
-    f"\nTotal Source-1 entities: "
-    f"{len(matching_results)}"
-)
-
-print(
-    f"Entities with at least one match: "
-    f"{non_empty}"
-)
-
-print(
-    f"Entities with no match: "
-    f"{len(matching_results) - non_empty}"
-)
-
-print("\nPIPELINE COMPLETED.")
+if __name__ == "__main__":
+    main()
