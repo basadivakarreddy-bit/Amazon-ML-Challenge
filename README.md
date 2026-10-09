@@ -1,4 +1,4 @@
-# amazon-ml-2026 — Business Entity Resolution
+# amazon-ml-2026 — Business Entity Resolution.
 
 Team repo for the ML Challenge 2026 Business Entity Resolution task. Pipeline:
 
